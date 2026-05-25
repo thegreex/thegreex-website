@@ -514,6 +514,7 @@ body::before {
   width: 100%;
   aspect-ratio: 4/3;
   object-fit: cover;
+  object-position: top;
   display: block;
   transition: transform 0.3s;
 }
