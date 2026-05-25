@@ -512,9 +512,7 @@ body::before {
 
 .news-photos img {
   width: 100%;
-  aspect-ratio: 4/3;
-  object-fit: cover;
-  object-position: top;
+  height: auto;
   display: block;
   transition: transform 0.3s;
 }
