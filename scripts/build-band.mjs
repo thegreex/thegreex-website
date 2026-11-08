@@ -2,6 +2,9 @@
 // Leest band-src/, versleutelt en schrijft band/data.enc.json
 // Gebruik: node scripts/build-band.mjs
 // Of: BAND_PASSWORD=geheim node scripts/build-band.mjs
+//
+// LET OP: als band/data.enc.json al bestaat (portal-data), weigert dit script
+// tenzij je --force meegeeft. Gebruik de portal voor nummers/optredens toevoegen.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'fs';
 import { join, basename } from 'path';
@@ -76,6 +79,14 @@ function readGigs(slugs) {
 }
 
 async function main() {
+  if (existsSync(OUT_FILE) && !process.argv.includes('--force')) {
+    throw new Error(
+      `${OUT_FILE} bestaat al — gegevens uit het portaal worden beschermd.\n` +
+      `Gebruik "npm run build -- --force" om te overschrijven.\n` +
+      `LET OP: dit overschrijft ALLE data die via het portaal is toegevoegd!`
+    );
+  }
+
   const password = await promptPassword();
   if (!password) throw new Error('Geen wachtwoord opgegeven');
 
