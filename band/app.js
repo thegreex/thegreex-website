@@ -10,7 +10,7 @@ async function deriveKey(password, salt, iterations) {
     km,
     { name: 'AES-GCM', length: 256 },
     true,
-    ['decrypt']
+    ['decrypt', 'encrypt']
   );
 }
 
@@ -33,8 +33,55 @@ async function loadSavedKey() {
   if (!stored) return null;
   try {
     const raw = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
-    return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, true, ['decrypt', 'encrypt']);
   } catch { return null; }
+}
+
+async function reEncrypt(key) {
+  const raw = await crypto.subtle.exportKey('raw', key);
+  const encKey = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    encKey,
+    new TextEncoder().encode(JSON.stringify(appData))
+  );
+  return {
+    v: 1,
+    iterations: appEnvelope.iterations,
+    salt: appEnvelope.salt,
+    iv: Array.from(iv),
+    data: Array.from(new Uint8Array(ct))
+  };
+}
+
+async function pushToGitHub(token, envelope) {
+  const url = 'https://api.github.com/repos/thegreex/thegreex-website/contents/band/data.enc.json';
+  const headers = {
+    'Authorization': `token ${token}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json'
+  };
+  const getResp = await fetch(url, { headers });
+  let sha;
+  if (getResp.ok) {
+    sha = (await getResp.json()).sha;
+  } else if (getResp.status !== 404) {
+    const e = await getResp.json().catch(() => ({}));
+    throw new Error(e.message || `GitHub fout ${getResp.status}`);
+  }
+  const content = btoa(JSON.stringify(envelope));
+  const body = {
+    message: 'Band: data bijgewerkt via portaal',
+    content,
+    committer: { name: 'The Greex Band', email: 'thegreexband@gmail.com' }
+  };
+  if (sha) body.sha = sha;
+  const putResp = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
+  if (!putResp.ok) {
+    const e = await putResp.json().catch(() => ({}));
+    throw new Error(e.message || `GitHub fout ${putResp.status}`);
+  }
 }
 
 // ===== CHORDPRO PARSER =====
@@ -120,16 +167,16 @@ function renderChordLine(segments, semitones, targetKey) {
   }
   const parts = segments.map(({ chord, text }) => {
     const ch = chord ? transposeChord(chord, semitones, targetKey) : '';
-    return `<span class="cw"><span class="ch">${escHtml(ch)}</span><span class="ly">${escHtml(text) || ' '}</span></span>`;
+    return `<span class="cw"><span class="ch">${escHtml(ch)}</span><span class="ly">${escHtml(text) || '\u00a0'}</span></span>`;
   });
   return `<span class="line-chords">${parts.join('')}</span>`;
 }
 
 function sectionLabel(type, label) {
   if (label) return label;
-  if (type === 'verse')   return 'Couplet';
-  if (type === 'chorus')  return 'Refrein';
-  if (type === 'bridge')  return 'Bridge';
+  if (type === 'verse')  return 'Couplet';
+  if (type === 'chorus') return 'Refrein';
+  if (type === 'bridge') return 'Bridge';
   return '';
 }
 
@@ -181,11 +228,19 @@ function formatDuration(secs) {
   return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
 }
 
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = type === 'error' ? 'msg-error' : 'msg-ok';
+}
+
 // ===== STATE =====
 
-let appData = null;
+let appData     = null;
+let appEnvelope = null;
 
-// ===== VIEWS =====
+// ===== VIEWS – SONGS =====
 
 function viewSongs() {
   const rows = Object.entries(appData.songs)
@@ -247,6 +302,8 @@ function viewSong(slug, semitones) {
   <div class="song-body">${renderSong(parsed)}</div>`;
 }
 
+// ===== VIEWS – GIGS =====
+
 function viewGigs() {
   const now = new Date().toISOString().slice(0, 10);
   const upcoming = appData.gigs.filter(g => g.date >= now);
@@ -263,7 +320,7 @@ function viewGigs() {
     </a>`;
   }
 
-  const upHtml  = upcoming.length ? upcoming.map(card).join('') : '<p class="muted-p">Geen aankomende optredens</p>';
+  const upHtml   = upcoming.length ? upcoming.map(card).join('') : '<p class="muted-p">Geen aankomende optredens</p>';
   const pastHtml = past.length ? `<h2 class="list-h2">Vorige optredens</h2>${past.map(card).join('')}` : '';
 
   return `<div class="view-header"><h1>Optredens</h1></div>
@@ -297,8 +354,7 @@ function viewGig(gigId) {
       <div class="set-head">
         <span class="set-name">${escHtml(set.name)}</span>
         <span class="set-total">${formatDuration(setSecs)}</span>
-      </div>
-      ${rows}
+      </div>${rows}
     </div>${pause}`;
   }).join('');
 
@@ -319,6 +375,190 @@ function viewGig(gigId) {
   <div class="setlist">${setsHtml}</div>`;
 }
 
+// ===== VIEWS – ADMIN =====
+
+function viewAdmin() {
+  const songs = Object.entries(appData.songs)
+    .map(([slug, cho]) => {
+      const m = parseDirectives(cho);
+      return { slug, title: m.title || slug, artist: m.artist || '', key: m.key || '' };
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, 'nl'));
+
+  const songRows = songs.map(s => `<tr>
+    <td>${escHtml(s.title)}</td>
+    <td class="col-artist">${escHtml(s.artist)}</td>
+    <td class="col-key"><span class="key-badge">${escHtml(s.key)}</span></td>
+    <td class="col-actions">
+      <a href="#edit-song/${escHtml(s.slug)}" class="btn-action">Bewerk</a>
+      <button class="btn-action btn-danger" onclick="app.confirmDeleteSong('${escHtml(s.slug)}','${escHtml(s.title).replace(/'/g,"\\'")}')">Verwijder</button>
+    </td>
+  </tr>`).join('');
+
+  const gigRows = [...appData.gigs].sort((a, b) => b.date.localeCompare(a.date)).map(g => {
+    const id = `${g.date}-${slugify(g.name)}`;
+    return `<tr>
+      <td>${formatDate(g.date)}</td>
+      <td>${escHtml(g.name)}</td>
+      <td class="col-artist">${escHtml(g.venue)}</td>
+      <td class="col-actions">
+        <a href="#edit-gig/${escHtml(id)}" class="btn-action">Bewerk</a>
+        <button class="btn-action btn-danger" onclick="app.confirmDeleteGig('${escHtml(id)}','${escHtml(g.name).replace(/'/g,"\\'")}')">Verwijder</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="view-header"><h1>Beheer</h1></div>
+
+  <div class="admin-section">
+    <div class="admin-section-head">
+      <h2 class="admin-h2">Nummers</h2>
+      <a href="#new-song" class="btn-secondary-sm">+ Nieuw nummer</a>
+    </div>
+    <table class="song-table">
+      <thead><tr><th>Titel</th><th>Artiest</th><th>Toon</th><th></th></tr></thead>
+      <tbody>${songRows}</tbody>
+    </table>
+  </div>
+
+  <div class="admin-section">
+    <div class="admin-section-head">
+      <h2 class="admin-h2">Optredens</h2>
+      <a href="#new-gig" class="btn-secondary-sm">+ Nieuw optreden</a>
+    </div>
+    <table class="song-table">
+      <thead><tr><th>Datum</th><th>Naam</th><th>Locatie</th><th></th></tr></thead>
+      <tbody>${gigRows || '<tr><td colspan="4" class="muted-p">Nog geen optredens</td></tr>'}</tbody>
+    </table>
+  </div>
+
+  <div class="publish-bar">
+    <p id="publish-status" class="msg-ok"></p>
+    <button class="btn-publish" onclick="app.showPublish()">🚀 Publiceer naar website</button>
+  </div>
+
+  <div id="publish-modal" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <h2 class="modal-title">Publiceren</h2>
+      <p class="modal-info">GitHub token (classic, <code>repo</code> scope) van <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a>.</p>
+      <input type="password" id="gh-token-input" placeholder="ghp_…" class="login-input" autocomplete="off">
+      <p id="publish-error" class="msg-error"></p>
+      <div class="modal-btns">
+        <button id="publish-btn" class="btn-login" onclick="app.doPublish()">Publiceren</button>
+        <button class="btn-cancel" onclick="app.hidePublish()">Annuleren</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function viewEditSong(slug) {
+  const cho = appData.songs[slug];
+  if (!cho) return `<p class="error">Nummer niet gevonden.</p>`;
+  const meta = parseDirectives(cho);
+  return `<div class="view-header">
+    <a href="#admin" class="back-link">← Beheer</a>
+    <h1>${escHtml(meta.title || slug)}</h1>
+  </div>
+  <div class="editor-wrap">
+    <textarea id="song-editor" class="cho-editor" spellcheck="false">${escHtml(cho)}</textarea>
+    <div class="editor-actions">
+      <button class="btn-login" onclick="app.saveSong('${escHtml(slug)}')">Opslaan</button>
+      <a href="#admin" class="btn-cancel-link">Annuleren</a>
+    </div>
+    <p id="editor-msg"></p>
+  </div>`;
+}
+
+const NEW_SONG_TEMPLATE = `{title: Vul titel in}
+{artist: Artiest}
+{key: G}
+{x_original_key: G}
+{capo: 0}
+{tempo: 120}
+{duration: 3:30}
+{x_lead: Xander}
+{x_notes: }
+{x_link: }
+
+{start_of_verse: Couplet 1}
+[G]Eerste [C]regel van het [D]couplet
+[G]Tweede [C]regel hier
+{end_of_verse}
+
+{start_of_chorus: Refrein}
+[C]Eerste [G]regel van het [D]refrein
+[C]Tweede [G]regel
+{end_of_chorus}`;
+
+function viewNewSong() {
+  return `<div class="view-header">
+    <a href="#admin" class="back-link">← Beheer</a>
+    <h1>Nieuw nummer</h1>
+  </div>
+  <div class="editor-wrap">
+    <div class="slug-row">
+      <label class="slug-label">Slug <span class="slug-hint">(alleen a-z, 0-9 en koppeltekens, bijv. highway-to-hell)</span></label>
+      <input type="text" id="new-slug" placeholder="bijv. highway-to-hell" class="slug-input" autocomplete="off">
+    </div>
+    <textarea id="song-editor" class="cho-editor" spellcheck="false">${escHtml(NEW_SONG_TEMPLATE)}</textarea>
+    <div class="editor-actions">
+      <button class="btn-login" onclick="app.createSong()">Aanmaken</button>
+      <a href="#admin" class="btn-cancel-link">Annuleren</a>
+    </div>
+    <p id="editor-msg"></p>
+  </div>`;
+}
+
+function viewEditGig(gigId) {
+  const datePart = gigId.slice(0, 10);
+  const gig = appData.gigs.find(g => g.date === datePart && slugify(g.name) === gigId.slice(11));
+  if (!gig) return `<p class="error">Optreden niet gevonden.</p>`;
+  return gigEditorHtml(gig, gigId);
+}
+
+function viewNewGig() {
+  return gigEditorHtml(null, null);
+}
+
+function gigEditorHtml(gig, gigId) {
+  const isNew = !gig;
+  const today = new Date().toISOString().slice(0, 10);
+  const setsHtml = (gig?.sets || [{ name: 'Set 1', songs: [] }]).map((set, i) => setBlockHtml(i, set)).join('');
+
+  return `<div class="view-header">
+    <a href="#admin" class="back-link">← Beheer</a>
+    <h1>${isNew ? 'Nieuw optreden' : escHtml(gig.name)}</h1>
+  </div>
+  <div class="editor-wrap" id="gig-editor-wrap">
+    <div class="gig-fields">
+      <label class="field-label">Datum<input type="date" id="gig-date" class="field-input" value="${gig?.date || today}"></label>
+      <label class="field-label">Naam<input type="text" id="gig-name" class="field-input" placeholder="Kerstfeest" value="${escHtml(gig?.name || '')}"></label>
+      <label class="field-label">Locatie<input type="text" id="gig-venue" class="field-input" placeholder="Café de Roos, Vlaardingen" value="${escHtml(gig?.venue || '')}"></label>
+      <label class="field-label">Notities<input type="text" id="gig-notes" class="field-input" placeholder="Opbouw 19:00" value="${escHtml(gig?.notes || '')}"></label>
+    </div>
+    <div id="sets-container">${setsHtml}</div>
+    <button class="btn-secondary-sm add-set-btn" onclick="app.addSet()">+ Set toevoegen</button>
+    <div class="editor-actions">
+      <button class="btn-login" onclick="${isNew ? 'app.createGig()' : `app.saveGig('${escHtml(gigId)}')`}">${isNew ? 'Aanmaken' : 'Opslaan'}</button>
+      <a href="#admin" class="btn-cancel-link">Annuleren</a>
+    </div>
+    <p id="editor-msg"></p>
+  </div>`;
+}
+
+function setBlockHtml(i, set) {
+  const songs = (set?.songs || []).map(s => s.key ? `${s.song}|${s.key}` : s.song).join('\n');
+  return `<div class="set-editor-block">
+    <div class="set-editor-head">
+      <label class="slug-label">Set naam</label>
+      <input type="text" class="set-name-input field-input" value="${escHtml(set?.name || `Set ${i + 1}`)}" placeholder="Set ${i + 1}">
+      <button class="btn-action btn-danger" onclick="this.closest('.set-editor-block').remove()">Verwijder set</button>
+    </div>
+    <label class="set-songs-label slug-label">Nummers — één per regel, optioneel <code>|toon</code> (bijv. <code>star-shaker|Bb</code>)</label>
+    <textarea class="set-songs-input" rows="6" spellcheck="false">${escHtml(songs)}</textarea>
+  </div>`;
+}
+
 // ===== GIG PRINT =====
 
 window.app = {
@@ -330,12 +570,9 @@ window.app = {
     const datePart = gigId.slice(0, 10);
     const gig = appData.gigs.find(g => g.date === datePart && slugify(g.name) === gigId.slice(11));
     if (!gig) return;
-
     let html = `<div class="pg-title">${escHtml(gig.name)}</div>`;
     html += `<div class="pg-meta">${formatDate(gig.date)} · ${escHtml(gig.venue)}</div>`;
     if (gig.notes) html += `<div class="pg-notes">${escHtml(gig.notes)}</div>`;
-
-    // Setlist section
     let totalSecs = 0;
     (gig.sets || []).forEach((set, si) => {
       let setSecs = 0;
@@ -356,18 +593,13 @@ window.app = {
       if (si < gig.sets.length - 1) html += `<div class="pg-pause">— PAUZE —</div>`;
     });
     html += `<div class="pg-total">Totale speeltijd: ${formatDuration(totalSecs)}</div>`;
-
-    // Songs, one per page
     (gig.sets || []).forEach(set => {
       set.songs.forEach(item => {
         const cho = appData.songs[item.song];
         if (!cho) return;
         const meta = parseDirectives(cho);
-        const songKey = meta.key || 'C';
-        const gigKey  = item.key;
-        const semiT   = gigKey ? semitonesBetween(songKey, gigKey) : 0;
-        const parsed  = parseSong(cho, semiT);
-
+        const semiT = item.key ? semitonesBetween(meta.key || 'C', item.key) : 0;
+        const parsed = parseSong(cho, semiT);
         html += `<div class="pg-song-page">`;
         html += `<div class="pg-song-title">${escHtml(meta.title || item.song)}</div>`;
         html += `<div class="pg-song-meta">`;
@@ -378,14 +610,142 @@ window.app = {
         html += `</div>${renderSong(parsed)}</div>`;
       });
     });
-
     const pc = document.getElementById('print-container');
     pc.innerHTML = html;
     document.body.dataset.printMode = 'gig';
     window.print();
     setTimeout(() => { pc.innerHTML = ''; delete document.body.dataset.printMode; }, 1000);
+  },
+
+  // Admin: songs
+  saveSong(slug) {
+    const content = document.getElementById('song-editor')?.value;
+    if (!content?.trim()) { showMsg('editor-msg', 'Inhoud mag niet leeg zijn.', 'error'); return; }
+    appData.songs[slug] = content;
+    showMsg('editor-msg', '✓ Opgeslagen (nog niet gepubliceerd)', 'ok');
+  },
+
+  createSong() {
+    const slug = document.getElementById('new-slug')?.value.trim();
+    const content = document.getElementById('song-editor')?.value;
+    if (!slug) { showMsg('editor-msg', 'Voer een slug in.', 'error'); return; }
+    if (!/^[a-z0-9-]+$/.test(slug)) { showMsg('editor-msg', 'Slug mag alleen a-z, 0-9 en - bevatten.', 'error'); return; }
+    if (appData.songs[slug]) { showMsg('editor-msg', `Slug "${slug}" bestaat al.`, 'error'); return; }
+    if (!content?.trim()) { showMsg('editor-msg', 'Inhoud mag niet leeg zijn.', 'error'); return; }
+    appData.songs[slug] = content;
+    window.location.hash = `edit-song/${slug}`;
+  },
+
+  confirmDeleteSong(slug, title) {
+    if (!confirm(`"${title}" verwijderen?`)) return;
+    delete appData.songs[slug];
+    window.location.hash = 'admin';
+  },
+
+  // Admin: gigs
+  saveGig(gigId) {
+    const data = readGigForm(); if (!data) return;
+    const datePart = gigId.slice(0, 10);
+    const idx = appData.gigs.findIndex(g => g.date === datePart && slugify(g.name) === gigId.slice(11));
+    if (idx === -1) { showMsg('editor-msg', 'Optreden niet gevonden.', 'error'); return; }
+    appData.gigs[idx] = data;
+    showMsg('editor-msg', '✓ Opgeslagen (nog niet gepubliceerd)', 'ok');
+  },
+
+  createGig() {
+    const data = readGigForm(); if (!data) return;
+    appData.gigs.push(data);
+    appData.gigs.sort((a, b) => a.date.localeCompare(b.date));
+    window.location.hash = `gig/${data.date}-${slugify(data.name)}`;
+  },
+
+  confirmDeleteGig(gigId, name) {
+    if (!confirm(`"${name}" verwijderen?`)) return;
+    const datePart = gigId.slice(0, 10);
+    appData.gigs = appData.gigs.filter(g => !(g.date === datePart && slugify(g.name) === gigId.slice(11)));
+    window.location.hash = 'admin';
+  },
+
+  addSet() {
+    const container = document.getElementById('sets-container');
+    if (!container) return;
+    const count = container.querySelectorAll('.set-editor-block').length;
+    const div = document.createElement('div');
+    div.innerHTML = setBlockHtml(count, null);
+    container.appendChild(div.firstElementChild);
+  },
+
+  // Publish
+  showPublish() {
+    const modal = document.getElementById('publish-modal');
+    if (modal) modal.hidden = false;
+    const stored = sessionStorage.getItem('band_gh_token');
+    if (stored) {
+      const input = document.getElementById('gh-token-input');
+      if (input) input.value = stored;
+    }
+  },
+
+  hidePublish() {
+    const modal = document.getElementById('publish-modal');
+    if (modal) modal.hidden = true;
+  },
+
+  async doPublish() {
+    const token = document.getElementById('gh-token-input')?.value.trim();
+    const errEl = document.getElementById('publish-error');
+    if (errEl) errEl.textContent = '';
+    if (!token) { showMsg('publish-error', 'Voer een GitHub token in.', 'error'); return; }
+    sessionStorage.setItem('band_gh_token', token);
+    const btn = document.getElementById('publish-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Versleutelen…'; }
+    try {
+      const key = await loadSavedKey();
+      if (!key) throw new Error('Sessie verlopen, log opnieuw in.');
+      const newEnvelope = await reEncrypt(key);
+      if (btn) btn.textContent = 'Publiceren naar GitHub…';
+      await pushToGitHub(token, newEnvelope);
+      appEnvelope = newEnvelope;
+      app.hidePublish();
+      showMsg('publish-status', '✓ Gepubliceerd! Duurt ~1 minuut voor live.', 'ok');
+    } catch (e) {
+      showMsg('publish-error', 'Fout: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Publiceren'; }
+    }
   }
 };
+
+function readGigForm() {
+  const date  = document.getElementById('gig-date')?.value;
+  const name  = document.getElementById('gig-name')?.value.trim();
+  const venue = document.getElementById('gig-venue')?.value.trim();
+  const notes = document.getElementById('gig-notes')?.value.trim();
+  if (!date || !name || !venue) {
+    showMsg('editor-msg', 'Datum, naam en locatie zijn verplicht.', 'error');
+    return null;
+  }
+  const sets = [];
+  let valid = true;
+  document.querySelectorAll('.set-editor-block').forEach(block => {
+    if (!valid) return;
+    const setName = block.querySelector('.set-name-input')?.value.trim() || 'Set';
+    const songsText = block.querySelector('.set-songs-input')?.value || '';
+    const songs = songsText.split('\n').map(l => l.trim()).filter(l => l).map(l => {
+      const [song, key] = l.split('|');
+      return key ? { song: song.trim(), key: key.trim() } : { song: song.trim() };
+    }).filter(s => s.song);
+    for (const s of songs) {
+      if (!appData.songs[s.song]) {
+        showMsg('editor-msg', `Slug "${s.song}" bestaat niet in nummers.`, 'error');
+        valid = false; return;
+      }
+    }
+    sets.push({ name: setName, songs });
+  });
+  if (!valid) return null;
+  return { date, venue, name, notes: notes || '', sets };
+}
 
 // ===== ROUTER =====
 
@@ -403,14 +763,19 @@ function render() {
   const content = document.getElementById('app-content');
 
   document.querySelectorAll('.band-nav a[data-view]').forEach(a => {
-    a.classList.toggle('active', a.dataset.view === view);
+    a.classList.toggle('active', a.dataset.view === view || (view.startsWith('edit-') && a.dataset.view === 'admin') || (view === 'new-song' && a.dataset.view === 'admin') || (view === 'new-gig' && a.dataset.view === 'admin'));
   });
 
-  if      (view === 'songs') content.innerHTML = viewSongs();
-  else if (view === 'song')  content.innerHTML = viewSong(id, parseInt(params.t || '0', 10));
-  else if (view === 'gigs')  content.innerHTML = viewGigs();
-  else if (view === 'gig')   content.innerHTML = viewGig(id);
-  else                       content.innerHTML = viewSongs();
+  if      (view === 'songs')     content.innerHTML = viewSongs();
+  else if (view === 'song')      content.innerHTML = viewSong(id, parseInt(params.t || '0', 10));
+  else if (view === 'gigs')      content.innerHTML = viewGigs();
+  else if (view === 'gig')       content.innerHTML = viewGig(id);
+  else if (view === 'admin')     content.innerHTML = viewAdmin();
+  else if (view === 'edit-song') content.innerHTML = viewEditSong(id);
+  else if (view === 'new-song')  content.innerHTML = viewNewSong();
+  else if (view === 'edit-gig')  content.innerHTML = viewEditGig(id);
+  else if (view === 'new-gig')   content.innerHTML = viewNewGig();
+  else                           content.innerHTML = viewSongs();
 
   if (view === 'songs') {
     const input = document.getElementById('songSearch');
@@ -421,7 +786,6 @@ function render() {
       });
     });
   }
-
   window.scrollTo(0, 0);
 }
 
@@ -450,11 +814,10 @@ async function boot() {
   const savedKey = await loadSavedKey();
   if (savedKey) {
     const data = await tryDecrypt(savedKey, envelope);
-    if (data) { appData = data; showApp(loginScreen, appScreen); return; }
+    if (data) { appData = data; appEnvelope = envelope; showApp(loginScreen, appScreen); return; }
   }
 
   loginScreen.hidden = false;
-
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const pw = document.getElementById('password-input').value;
@@ -466,7 +829,7 @@ async function boot() {
       const data = await tryDecrypt(key, envelope);
       if (!data) { errorEl.textContent = 'Verkeerd wachtwoord.'; btn.disabled = false; btn.textContent = 'Inloggen'; return; }
       await saveKey(key);
-      appData = data;
+      appData = data; appEnvelope = envelope;
       showApp(loginScreen, appScreen);
     } catch (err) {
       errorEl.textContent = 'Fout: ' + err.message;
@@ -483,8 +846,8 @@ function showApp(loginScreen, appScreen) {
 }
 
 document.getElementById('logout-btn').addEventListener('click', () => {
-  sessionStorage.removeItem('band_key');
-  appData = null;
+  sessionStorage.clear();
+  appData = null; appEnvelope = null;
   window.location.hash = '';
   window.location.reload();
 });
