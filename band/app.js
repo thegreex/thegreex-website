@@ -698,7 +698,8 @@ window.app = {
   confirmDeleteSong(slug, title) {
     if (!confirm(`"${title}" verwijderen?`)) return;
     delete appData.songs[slug];
-    window.location.hash = 'admin';
+    if (window.location.hash === '#admin') render();
+    else window.location.hash = 'admin';
   },
 
   // Admin: gigs
@@ -722,7 +723,8 @@ window.app = {
     if (!confirm(`"${name}" verwijderen?`)) return;
     const datePart = gigId.slice(0, 10);
     appData.gigs = appData.gigs.filter(g => !(g.date === datePart && slugify(g.name) === gigId.slice(11)));
-    window.location.hash = 'admin';
+    if (window.location.hash === '#admin') render();
+    else window.location.hash = 'admin';
   },
 
   addSet() {
