@@ -154,7 +154,7 @@ function parseSong(cho, semitones) {
       cur.lines.push({ type: 'text', text: line });
     }
   }
-  return { meta, sections, originalKey, targetKey, semitones };
+  return { meta, sections, originalKey, targetKey, semitones, rawCho: cho };
 }
 
 function escHtml(s) {
@@ -180,7 +180,12 @@ function sectionLabel(type, label) {
   return '';
 }
 
-function renderSong({ sections, semitones, targetKey }) {
+function renderSong({ sections, semitones, targetKey, rawCho }) {
+  if (sections.length === 0) {
+    const lines = rawCho.split('\n').filter(l => !l.match(/^\{.*\}$/) && l.trim());
+    return `<div class="fallback-warning">⚠ Geen secties gevonden — controleer de ChordPro syntax (zijn {start_of_verse} en {end_of_verse} aanwezig?)</div>
+    <div class="song-body fallback-body">${lines.map(l => `<div class="song-line"><span class="ly-plain">${escHtml(l)}</span></div>`).join('')}</div>`;
+  }
   let html = '';
   for (const sec of sections) {
     if (sec.type === 'comment') {
