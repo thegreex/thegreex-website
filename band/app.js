@@ -551,16 +551,54 @@ function gigEditorHtml(gig, gigId) {
   </div>`;
 }
 
+function songPickerOptions() {
+  return Object.entries(appData.songs)
+    .map(([slug, cho]) => {
+      const m = parseDirectives(cho);
+      const label = [m.title || slug, m.artist ? `— ${m.artist}` : '', m.key ? `(${m.key})` : '', m.duration ? m.duration : ''].filter(Boolean).join(' ');
+      return `<option value="${escHtml(slug)}">${escHtml(label)}</option>`;
+    })
+    .sort()
+    .join('');
+}
+
+function songRowHtml(slug, keyOverride) {
+  const cho  = appData.songs[slug] || '';
+  const meta = parseDirectives(cho);
+  const defaultKey = meta.key || '';
+  const displayKey = keyOverride || defaultKey;
+  const dur  = meta.duration || '';
+  return `<div class="set-song-row" data-slug="${escHtml(slug)}" data-default-key="${escHtml(defaultKey)}">
+    <div class="ssrow-move">
+      <button class="btn-move" onclick="app.moveSong(this,-1)" title="Omhoog">↑</button>
+      <button class="btn-move" onclick="app.moveSong(this,1)"  title="Omlaag">↓</button>
+    </div>
+    <span class="ssrow-title">${escHtml(meta.title || slug)}</span>
+    <span class="ssrow-artist">${escHtml(meta.artist || '')}</span>
+    <span class="ssrow-key">
+      <input type="text" class="key-override-input" value="${escHtml(displayKey)}" placeholder="${escHtml(defaultKey) || '—'}" title="Toon (leeg = standaard)">
+    </span>
+    <span class="ssrow-dur">${escHtml(dur)}</span>
+    <button class="btn-remove-song" onclick="this.closest('.set-song-row').remove()" title="Verwijder">×</button>
+  </div>`;
+}
+
 function setBlockHtml(i, set) {
-  const songs = (set?.songs || []).map(s => s.key ? `${s.song}|${s.key}` : s.song).join('\n');
+  const songRows = (set?.songs || []).map(s => songRowHtml(s.song, s.key || '')).join('');
   return `<div class="set-editor-block">
     <div class="set-editor-head">
       <label class="slug-label">Set naam</label>
       <input type="text" class="set-name-input field-input" value="${escHtml(set?.name || `Set ${i + 1}`)}" placeholder="Set ${i + 1}">
       <button class="btn-action btn-danger" onclick="this.closest('.set-editor-block').remove()">Verwijder set</button>
     </div>
-    <label class="set-songs-label slug-label">Nummers — één per regel, optioneel <code>|toon</code> (bijv. <code>star-shaker|Bb</code>)</label>
-    <textarea class="set-songs-input" rows="6" spellcheck="false">${escHtml(songs)}</textarea>
+    <div class="set-songs-list">${songRows}</div>
+    <div class="set-add-row">
+      <select class="song-picker field-input">
+        <option value="">— Kies een nummer —</option>
+        ${songPickerOptions()}
+      </select>
+      <button class="btn-secondary-sm" onclick="app.addSongToSet(this)">+ Toevoegen</button>
+    </div>
   </div>`;
 }
 
@@ -680,6 +718,28 @@ window.app = {
     container.appendChild(div.firstElementChild);
   },
 
+  addSongToSet(btn) {
+    const addRow = btn.closest('.set-add-row');
+    const select = addRow.querySelector('.song-picker');
+    const slug = select.value;
+    if (!slug) return;
+    const list = addRow.previousElementSibling;
+    const div = document.createElement('div');
+    div.innerHTML = songRowHtml(slug, '');
+    list.appendChild(div.firstElementChild);
+    select.value = '';
+  },
+
+  moveSong(btn, dir) {
+    const row  = btn.closest('.set-song-row');
+    const list = row.parentElement;
+    if (dir === -1 && row.previousElementSibling) {
+      list.insertBefore(row, row.previousElementSibling);
+    } else if (dir === 1 && row.nextElementSibling) {
+      list.insertBefore(row.nextElementSibling, row);
+    }
+  },
+
   // Publish
   showPublish() {
     const modal = document.getElementById('publish-modal');
@@ -731,24 +791,16 @@ function readGigForm() {
     return null;
   }
   const sets = [];
-  let valid = true;
   document.querySelectorAll('.set-editor-block').forEach(block => {
-    if (!valid) return;
     const setName = block.querySelector('.set-name-input')?.value.trim() || 'Set';
-    const songsText = block.querySelector('.set-songs-input')?.value || '';
-    const songs = songsText.split('\n').map(l => l.trim()).filter(l => l).map(l => {
-      const [song, key] = l.split('|');
-      return key ? { song: song.trim(), key: key.trim() } : { song: song.trim() };
-    }).filter(s => s.song);
-    for (const s of songs) {
-      if (!appData.songs[s.song]) {
-        showMsg('editor-msg', `Slug "${s.song}" bestaat niet in nummers.`, 'error');
-        valid = false; return;
-      }
-    }
+    const songs = [...block.querySelectorAll('.set-song-row')].map(row => {
+      const slug = row.dataset.slug;
+      const defaultKey = row.dataset.defaultKey;
+      const keyOverride = row.querySelector('.key-override-input')?.value.trim() || '';
+      return keyOverride && keyOverride !== defaultKey ? { song: slug, key: keyOverride } : { song: slug };
+    });
     sets.push({ name: setName, songs });
   });
-  if (!valid) return null;
   return { date, venue, name, notes: notes || '', sets };
 }
 
