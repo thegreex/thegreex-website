@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /band/
 
 Sitemap: https://www.thegreex.nl/sitemap.xml

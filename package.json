@@ -1,0 +1,10 @@
+{
+  "name": "thegreex-website",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "new-song": "node scripts/new-song.mjs",
+    "build": "node scripts/build-band.mjs",
+    "test": "node --test tests/transpose.test.mjs"
+  }
+}

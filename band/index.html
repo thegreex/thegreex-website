@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>The Greex – Band</title>
+  <link rel="icon" href="../images/logo.jpg" type="image/jpeg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;600&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="band.css">
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div id="login-screen" hidden>
+    <div class="login-box">
+      <img src="../images/logo.jpg" alt="The Greex" class="login-logo">
+      <h1 class="login-title">Band Portaal</h1>
+      <form id="login-form" autocomplete="on">
+        <input type="password" id="password-input" placeholder="Wachtwoord" class="login-input" autocomplete="current-password">
+        <button type="submit" class="btn-login">Inloggen</button>
+      </form>
+      <p id="login-error" class="login-error" role="alert"></p>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app-screen" hidden>
+    <header class="band-header screen-only">
+      <a href="#songs" class="brand-link">
+        <img src="../images/logo.jpg" alt="The Greex" class="brand-logo">
+        <span class="brand-name">Band</span>
+      </a>
+      <nav class="band-nav">
+        <a href="#songs" data-view="songs">Nummers</a>
+        <a href="#gigs"  data-view="gigs">Optredens</a>
+        <button id="logout-btn" class="btn-logout" type="button">Uitloggen</button>
+      </nav>
+    </header>
+    <main id="app-content"></main>
+  </div>
+
+  <!-- PRINT CONTAINER (alleen zichtbaar bij gig-print) -->
+  <div id="print-container" aria-hidden="true"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
