@@ -120,6 +120,7 @@ img { max-width: 100%; display: block; }
 .band-header {
   position: fixed;
   top: 0; left: 0; right: 0;
+  overflow: visible;
   height: var(--header-h);
   background: rgba(13,13,13,0.97);
   border-bottom: 1px solid #222;
@@ -682,6 +683,21 @@ img { max-width: 100%; display: block; }
   flex-wrap: wrap;
 }
 
+.btn-publish-secondary {
+  padding: 11px 20px;
+  background: none;
+  border: 1px solid #444;
+  color: var(--grey);
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.btn-publish-secondary:hover { color: var(--cream); border-color: #888; }
+
 .btn-publish {
   padding: 11px 28px;
   background: var(--green);
@@ -1000,18 +1016,106 @@ input[type="date"].field-input { color-scheme: dark; }
   .admin-section-head { flex-direction: column; align-items: flex-start; }
 }
 
+/* ===== BURGER BUTTON ===== */
+.burger-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+}
+.burger-btn span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--cream);
+  border-radius: 1px;
+  transition: transform 0.2s, opacity 0.2s;
+}
+.burger-btn.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.burger-btn.open span:nth-child(2) { opacity: 0; }
+.burger-btn.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
 /* ===== RESPONSIVE ===== */
-@media (max-width: 600px) {
+@media (max-width: 680px) {
+  /* Navigation */
+  .burger-btn { display: flex; }
+
+  .band-nav {
+    display: none;
+    position: absolute;
+    top: var(--header-h);
+    left: 0;
+    right: 0;
+    background: var(--dark2);
+    border-bottom: 2px solid var(--green);
+    flex-direction: column;
+    padding: 8px 0 16px;
+    gap: 0;
+    z-index: 99;
+  }
+  .band-nav.open { display: flex; }
+
+  .band-nav a {
+    font-size: 1rem;
+    padding: 14px 24px;
+    border-bottom: 1px solid #222;
+    letter-spacing: 0.08em;
+  }
+
+  .btn-logout {
+    margin: 12px 24px 0;
+    width: calc(100% - 48px);
+    text-align: center;
+    padding: 10px;
+  }
+
+  /* Song body: horizontal scroll within song block */
+  .song-body {
+    font-size: 0.82rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Transpose controls: smaller on mobile */
+  .transpose-controls { gap: 6px; }
+  .btn-transpose { width: 40px; height: 40px; font-size: 1.4rem; }
+  .tc-key { font-size: 1.1rem; }
+
+  /* Admin tables: hide less important columns */
+  .col-artist { display: none; }
+  .song-table th:nth-child(4),
+  .song-table td:nth-child(4) { display: none; }
+
+  /* Gig cards */
   .gig-card { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
   .gig-date  { grid-column: 1; grid-row: 1; }
   .gig-name  { grid-column: 2; grid-row: 1; }
   .gig-venue { grid-column: 1 / -1; grid-row: 2; }
   .gig-count { display: none; }
 
+  /* Setlist */
   .setlist-row { grid-template-columns: 2em 1fr 3em 3em; }
   .set-artist  { display: none; }
 
-  .col-artist { display: none; }
+  /* Gig editor */
+  .gig-fields { grid-template-columns: 1fr; }
+  .admin-section-head { flex-direction: column; align-items: flex-start; }
+
+  /* Set song rows */
+  .set-song-row { grid-template-columns: 2.4em 1fr 4em 2em; }
+  .ssrow-artist { display: none; }
+  .ssrow-dur    { display: none; }
+
+  /* Publish bar */
+  .publish-bar { flex-direction: column; align-items: stretch; }
+  .btn-publish, .btn-publish-secondary { width: 100%; text-align: center; }
 }
 
 /* ===== PRINT STYLES ===== */

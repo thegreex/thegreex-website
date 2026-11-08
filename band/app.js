@@ -439,6 +439,7 @@ function viewAdmin() {
 
   <div class="publish-bar">
     <p id="publish-status" class="msg-ok"></p>
+    <button class="btn-publish-secondary" onclick="app.showPasswordChange()">🔑 Wachtwoord wijzigen</button>
     <button class="btn-publish" onclick="app.showPublish()">🚀 Publiceer naar website</button>
   </div>
 
@@ -451,6 +452,21 @@ function viewAdmin() {
       <div class="modal-btns">
         <button id="publish-btn" class="btn-login" onclick="app.doPublish()">Publiceren</button>
         <button class="btn-cancel" onclick="app.hidePublish()">Annuleren</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pw-modal" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <h2 class="modal-title">Wachtwoord wijzigen</h2>
+      <p class="modal-info">Na het wijzigen moet iedereen met het nieuwe wachtwoord inloggen.</p>
+      <input type="password" id="pw-new" placeholder="Nieuw wachtwoord" class="login-input" autocomplete="new-password">
+      <input type="password" id="pw-confirm" placeholder="Bevestig nieuw wachtwoord" class="login-input" autocomplete="new-password">
+      <input type="password" id="pw-gh-token" placeholder="GitHub token (ghp_…)" class="login-input" autocomplete="off">
+      <p id="pw-error" class="msg-error"></p>
+      <div class="modal-btns">
+        <button id="pw-btn" class="btn-login" onclick="app.doPasswordChange()">Wijzigen &amp; publiceren</button>
+        <button class="btn-cancel" onclick="app.hidePasswordChange()">Annuleren</button>
       </div>
     </div>
   </div>`;
@@ -737,6 +753,69 @@ window.app = {
       list.insertBefore(row, row.previousElementSibling);
     } else if (dir === 1 && row.nextElementSibling) {
       list.insertBefore(row.nextElementSibling, row);
+    }
+  },
+
+  // Password change
+  showPasswordChange() {
+    const modal = document.getElementById('pw-modal');
+    if (modal) modal.hidden = false;
+    const stored = sessionStorage.getItem('band_gh_token');
+    if (stored) {
+      const t = document.getElementById('pw-gh-token');
+      if (t) t.value = stored;
+    }
+  },
+
+  hidePasswordChange() {
+    const modal = document.getElementById('pw-modal');
+    if (modal) modal.hidden = true;
+  },
+
+  async doPasswordChange() {
+    const newPw    = document.getElementById('pw-new')?.value;
+    const confirm  = document.getElementById('pw-confirm')?.value;
+    const token    = document.getElementById('pw-gh-token')?.value.trim();
+    const errEl    = document.getElementById('pw-error');
+    if (errEl) errEl.textContent = '';
+
+    if (!newPw)              { showMsg('pw-error', 'Voer een nieuw wachtwoord in.', 'error'); return; }
+    if (newPw.length < 8)    { showMsg('pw-error', 'Wachtwoord moet minimaal 8 tekens zijn.', 'error'); return; }
+    if (newPw !== confirm)   { showMsg('pw-error', 'Wachtwoorden komen niet overeen.', 'error'); return; }
+    if (!token)              { showMsg('pw-error', 'Voer een GitHub token in.', 'error'); return; }
+
+    sessionStorage.setItem('band_gh_token', token);
+    const btn = document.getElementById('pw-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Versleutelen…'; }
+
+    try {
+      const salt       = crypto.getRandomValues(new Uint8Array(16));
+      const iterations = appEnvelope.iterations;
+      const newKey     = await deriveKey(newPw, salt, iterations);
+
+      const raw    = await crypto.subtle.exportKey('raw', newKey);
+      const encKey = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+      const iv     = crypto.getRandomValues(new Uint8Array(12));
+      const ct     = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        encKey,
+        new TextEncoder().encode(JSON.stringify(appData))
+      );
+
+      const newEnvelope = { v: 1, iterations, salt: Array.from(salt), iv: Array.from(iv), data: Array.from(new Uint8Array(ct)) };
+
+      if (btn) btn.textContent = 'Publiceren…';
+      await pushToGitHub(token, newEnvelope);
+
+      appEnvelope = newEnvelope;
+      await saveKey(newKey);
+
+      app.hidePasswordChange();
+      showMsg('publish-status', '✓ Wachtwoord gewijzigd en gepubliceerd!', 'ok');
+    } catch (e) {
+      showMsg('pw-error', 'Fout: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Wijzigen & publiceren'; }
     }
   },
 
