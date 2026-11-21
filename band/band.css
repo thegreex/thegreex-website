@@ -1118,6 +1118,35 @@ input[type="date"].field-input { color-scheme: dark; }
   .btn-publish, .btn-publish-secondary { width: 100%; text-align: center; }
 }
 
+/* ===== AKKOORDDIAGRAM POPUP ===== */
+#chord-popup {
+  position: fixed;
+  z-index: 300;
+  background: var(--dark2);
+  border: 1px solid #444;
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.55);
+  padding: 6px 6px 4px;
+  width: 108px;
+}
+.chord-popup-inner svg { display: block; color: var(--cream); width: 96px; height: auto; }
+.chord-popup-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 2px; height: 20px;
+}
+.chord-prev, .chord-next {
+  background: none; border: none; color: var(--cream);
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px;
+  opacity: .7;
+}
+.chord-prev:hover, .chord-next:hover { opacity: 1; }
+.chord-prev:disabled, .chord-next:disabled { opacity: .2; cursor: default; }
+.chord-counter { font-size: 10px; color: var(--grey); }
+.chord-unknown { margin: 0; padding: 8px 4px; text-align: center; color: var(--cream); font-size: .78rem; }
+.chord-unknown small { color: var(--grey); }
+.ch { cursor: pointer; }
+.ch:hover { text-decoration: underline; text-decoration-style: dotted; }
+
 /* ===== PRINT STYLES ===== */
 
 #print-container { display: none; }
@@ -1191,35 +1220,6 @@ input[type="date"].field-input { color-scheme: dark; }
     letter-spacing: 0.2em; border-top: 0.5pt dashed #ccc; border-bottom: 0.5pt dashed #ccc;
     margin: 2pt 0;
   }
-  /* ===== AKKOORDDIAGRAM POPUP ===== */
-#chord-popup {
-  position: fixed;
-  z-index: 300;
-  background: var(--dark2);
-  border: 1px solid #444;
-  border-radius: 8px;
-  box-shadow: 0 4px 18px rgba(0,0,0,.55);
-  padding: 6px 6px 4px;
-  width: 108px;
-}
-.chord-popup-inner svg { display: block; color: var(--cream); width: 96px; height: auto; }
-.chord-popup-nav {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-top: 2px; height: 20px;
-}
-.chord-prev, .chord-next {
-  background: none; border: none; color: var(--cream);
-  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px;
-  opacity: .7;
-}
-.chord-prev:hover, .chord-next:hover { opacity: 1; }
-.chord-prev:disabled, .chord-next:disabled { opacity: .2; cursor: default; }
-.chord-counter { font-size: 10px; color: var(--grey); }
-.chord-unknown { margin: 0; padding: 8px 4px; text-align: center; color: var(--cream); font-size: .78rem; }
-.chord-unknown small { color: var(--grey); }
-.ch { cursor: pointer; }
-.ch:hover { text-decoration: underline; text-decoration-style: dotted; }
-
 .pg-total  { margin-top: 6pt; font-size: 9pt; color: #888; text-align: right; }
 
   /* Song pages in gig print */
