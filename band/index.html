@@ -50,7 +50,14 @@
   <div id="print-container" aria-hidden="true"></div>
 
   <!-- AKKOORDDIAGRAM POPUP -->
-  <div id="chord-popup" hidden><div class="chord-popup-inner"></div></div>
+  <div id="chord-popup" hidden>
+    <div class="chord-popup-inner"></div>
+    <div class="chord-popup-nav">
+      <button class="chord-prev" data-dir="prev" hidden>&#8249;</button>
+      <span class="chord-counter" hidden></span>
+      <button class="chord-next" data-dir="next" hidden>&#8250;</button>
+    </div>
+  </div>
 
   <script type="module" src="app.js"></script>
   <script>
