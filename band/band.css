@@ -1191,7 +1191,23 @@ input[type="date"].field-input { color-scheme: dark; }
     letter-spacing: 0.2em; border-top: 0.5pt dashed #ccc; border-bottom: 0.5pt dashed #ccc;
     margin: 2pt 0;
   }
-  .pg-total  { margin-top: 6pt; font-size: 9pt; color: #888; text-align: right; }
+  /* ===== AKKOORDDIAGRAM POPUP ===== */
+#chord-popup {
+  position: fixed;
+  z-index: 300;
+  background: var(--dark2);
+  border: 1px solid #444;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  padding: 8px;
+}
+.chord-popup-inner svg { display: block; color: var(--cream); }
+.chord-unknown { margin: 0; padding: 8px 12px; text-align: center; color: var(--cream); font-size: .85rem; }
+.chord-unknown small { color: var(--grey); }
+.ch { cursor: pointer; }
+.ch:hover { text-decoration: underline; text-decoration-style: dotted; }
+
+.pg-total  { margin-top: 6pt; font-size: 9pt; color: #888; text-align: right; }
 
   /* Song pages in gig print */
   .pg-song-page { break-before: page; }

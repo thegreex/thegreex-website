@@ -1,5 +1,124 @@
 import { transposeChord, transposeKey, semitonesBetween } from './transpose.js';
 
+// ===== AKKOORDDIAGRAMMEN =====
+// Formaat: [E, A, D, G, B, e]  -1=gedempt, 0=open, N=fret
+const CHORD_SHAPES = {
+  // Majeurs
+  'C':     [-1,3,2,0,1,0], 'D':  [-1,-1,0,2,3,2], 'E':  [0,2,2,1,0,0],
+  'F':     [1,3,3,2,1,1],  'G':  [3,2,0,0,0,3],   'A':  [-1,0,2,2,2,0],
+  'B':     [-1,2,4,4,4,2],
+  // Mineuren
+  'Am':    [-1,0,2,2,1,0], 'Bm': [-1,2,4,4,3,2],  'Cm': [-1,3,5,5,4,3],
+  'Dm':    [-1,-1,0,2,3,1],'Em': [0,2,2,0,0,0],   'Fm': [1,3,3,1,1,1],
+  'Gm':    [3,5,5,3,3,3],
+  // Dominant 7
+  'A7':    [-1,0,2,0,2,0], 'B7': [-1,2,1,2,0,2],  'C7': [-1,3,2,3,1,0],
+  'D7':    [-1,-1,0,2,1,2],'E7': [0,2,0,1,0,0],   'G7': [3,2,0,0,0,1],
+  // Minor 7
+  'Am7':   [-1,0,2,0,1,0],'Dm7':[-1,-1,0,2,1,1],  'Em7':[0,2,2,0,3,0],
+  'Bm7':   [-1,2,4,2,3,2],
+  // Major 7
+  'Cmaj7': [-1,3,2,0,0,0],'Dmaj7':[-1,-1,0,2,2,2],'Fmaj7':[-1,-1,3,2,1,0],
+  'Gmaj7': [3,2,0,0,0,2], 'Amaj7':[-1,0,2,1,2,0], 'Emaj7':[0,2,1,1,0,0],
+  // Flats / sharps (alternatieve namen)
+  'Bb':    [-1,1,3,3,3,1], 'A#': [-1,1,3,3,3,1],
+  'Eb':    [-1,6,8,8,8,6], 'D#': [-1,6,8,8,8,6],
+  'Ab':    [4,6,6,5,4,4],  'G#': [4,6,6,5,4,4],
+  'Db':    [-1,4,6,6,6,4], 'C#': [-1,4,6,6,6,4],
+  'Gb':    [2,4,4,3,2,2],  'F#': [2,4,4,3,2,2],
+  // Minor flats/sharps
+  'Bbm':   [-1,1,3,3,2,1], 'A#m':[-1,1,3,3,2,1],
+  'Ebm':   [-1,6,8,8,7,6], 'D#m':[-1,6,8,8,7,6],
+  'Abm':   [4,6,6,4,4,4],  'G#m':[4,6,6,4,4,4],
+  'Dbm':   [-1,4,6,6,5,4], 'C#m':[-1,4,6,6,5,4],
+  'Gbm':   [2,4,4,2,2,2],  'F#m':[2,4,4,2,2,2],
+  // Sus
+  'Dsus4': [-1,-1,0,2,3,3],'Asus4':[-1,0,2,2,3,0],'Esus4':[0,2,2,2,0,0],
+  // Slash-akkoorden
+  'D/F#':  [2,-1,0,2,3,2], 'G/B': [-1,2,0,0,0,3], 'A/C#':[-1,4,2,2,2,0],
+};
+
+function chordSvg(name) {
+  const shape = CHORD_SHAPES[name];
+  if (!shape) return '';
+  const activeFrets = shape.filter(f => f > 0);
+  if (!activeFrets.length && shape.every(f => f <= 0)) {
+    // All open/muted
+    activeFrets.push(1);
+  }
+  const minFret = activeFrets.length ? Math.min(...activeFrets) : 1;
+  const maxFret = activeFrets.length ? Math.max(...activeFrets) : 1;
+  const baseFret = minFret <= 1 ? 1 : minFret;
+  const numRows = Math.max(maxFret - baseFret + 1, 4);
+
+  const W = 120, padL = 12, padR = 24, padT = 30, padB = 18;
+  const fretW = (W - padL - padR) / 5;
+  const fretH = 22;
+  const H = padT + numRows * fretH + padB;
+  const sx = i => padL + i * fretW;
+  const fy = j => padT + j * fretH;
+  const dotY = j => padT + (j + 0.5) * fretH;
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+  if (baseFret === 1) {
+    s += `<rect x="${sx(0)}" y="${padT-5}" width="${sx(5)-sx(0)}" height="5" rx="2" fill="currentColor"/>`;
+  } else {
+    s += `<text x="${sx(5)+4}" y="${dotY(0)+4}" font-size="10" fill="currentColor">${baseFret}fr</text>`;
+  }
+  for (let j = baseFret === 1 ? 1 : 0; j <= numRows; j++) {
+    s += `<line x1="${sx(0)}" y1="${fy(j)}" x2="${sx(5)}" y2="${fy(j)}" stroke="currentColor" stroke-width="1" opacity=".5"/>`;
+  }
+  for (let i = 0; i < 6; i++) {
+    s += `<line x1="${sx(i)}" y1="${padT}" x2="${sx(i)}" y2="${fy(numRows)}" stroke="currentColor" stroke-width="1.2" opacity=".5"/>`;
+  }
+
+  // Barre detectie
+  const barreStrings = shape.map((f,i) => f === baseFret ? i : -1).filter(i => i >= 0);
+  if (barreStrings.length >= 3) {
+    const x1 = sx(barreStrings[0]), x2 = sx(barreStrings[barreStrings.length-1]);
+    s += `<rect x="${x1-8}" y="${dotY(0)-7}" width="${x2-x1+16}" height="14" rx="7" fill="currentColor"/>`;
+  }
+
+  for (let i = 0; i < 6; i++) {
+    const f = shape[i];
+    const x = sx(i);
+    if (f === -1) {
+      s += `<text x="${x}" y="${padT-10}" text-anchor="middle" font-size="12" fill="currentColor">×</text>`;
+    } else if (f === 0) {
+      s += `<circle cx="${x}" cy="${padT-11}" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/>`;
+    } else {
+      const row = f - baseFret;
+      if (row >= 0 && row < numRows) {
+        const inBarre = barreStrings.length >= 3 && barreStrings.includes(i) && f === baseFret;
+        if (!inBarre) s += `<circle cx="${x}" cy="${dotY(row)}" r="8" fill="currentColor"/>`;
+      }
+    }
+  }
+  s += `<text x="${W/2}" y="${H-4}" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">${name}</text>`;
+  return s + '</svg>';
+}
+
+function setupChordPopup() {
+  const popup = document.getElementById('chord-popup');
+  document.addEventListener('click', e => {
+    const ch = e.target.closest('.ch');
+    if (!ch) { popup.hidden = true; return; }
+    const name = ch.textContent.trim();
+    const svg = chordSvg(name);
+    popup.querySelector('.chord-popup-inner').innerHTML = svg ||
+      `<p class="chord-unknown">${escHtml(name)}<br><small>Geen diagram beschikbaar</small></p>`;
+    popup.hidden = false;
+    const rect = ch.getBoundingClientRect();
+    const pw = 136;
+    let left = rect.left + window.scrollX;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    popup.style.left = left + 'px';
+    popup.style.top  = (rect.bottom + window.scrollY + 6) + 'px';
+    e.stopPropagation();
+  });
+}
+
 // ===== CRYPTO =====
 
 async function deriveKey(password, salt, iterations) {
@@ -940,7 +1059,7 @@ async function boot() {
 
   let envelope;
   try {
-    const r = await fetch('data.enc.json');
+    const r = await fetch('data.enc.json?v=' + Date.now());
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     envelope = await r.json();
   } catch (e) {
@@ -979,6 +1098,7 @@ async function boot() {
 function showApp(loginScreen, appScreen) {
   loginScreen.hidden = true;
   appScreen.hidden   = false;
+  setupChordPopup();
   window.addEventListener('hashchange', render);
   render();
 }
